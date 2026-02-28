@@ -1,0 +1,8 @@
+bedrock-agentcore
+langgraph
+langchain-core
+langchain-aws
+langchain-google-genai
+typing-extensions
+python-dotenv
+requests

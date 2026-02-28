@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Local auth/secrets (do not commit)
+.gateway_auth.env
+.agentcore_identity_*.env
+.agentcore_identity_*.json
+.env
+.env.*
+!.env.example
+vertex-credentials.json
+tmp/e2e_oauth_state.json
+
+# Local runtime/deployment artifacts
+.bedrock_agentcore/
+.bedrock_agentcore.yaml
+tmp/
+tmpfile
+
+# Editor settings
+.vscode/
+.codex/
