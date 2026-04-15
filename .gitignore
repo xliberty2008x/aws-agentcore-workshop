@@ -29,3 +29,9 @@ local/
 # Editor settings
 .vscode/
 .codex/
+
+# Local presentation artifacts
+presentations/
+
+# Archived workshop materials
+archive/
