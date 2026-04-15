@@ -35,7 +35,7 @@ AgentCore Gateway є містком між агентом і зовнішнім�
 Рекомендований стек для workshop:
 
 1. Модель: `ChatBedrockConverse` (`langchain-aws`)
-2. Агентний цикл: `create_react_agent` (`langgraph.prebuilt`)
+2. Агентний цикл: `create_agent` (`langchain.agents`)
 3. Інструменти: `@tool` (`langchain_core.tools`)
 4. Памʼять потоку: `InMemorySaver` + `thread_id`
 
@@ -46,14 +46,14 @@ AgentCore Gateway є містком між агентом і зовнішнім�
 ## 4) Локальний vs Деплойний Контур
 
 ### Локальний контур (для навчання)
-Локальний ReAct-агент працює з mock-tools і реальним LLM, щоб сфокусуватись на механіці оркестрації та thread memory без OAuth/MCP складності.
+Локальний agent path на `create_agent` працює з mock-tools і реальним LLM, щоб сфокусуватись на механіці оркестрації та thread memory без OAuth/MCP складності.
 
 ### Деплойний контур (production-like)
 Деплойна версія працює з реальним Gateway, OAuth-флоу та інструментами з MCP pool. Це повний E2E сценарій з авторизацією і зовнішніми інтеграціями.
 
 ---
 
-## 5) ReAct Патерн у Workshop
+## 5) Agent Tool-Loop Патерн у Workshop
 
 Базова стратегія:
 
@@ -317,7 +317,7 @@ For workshop reliability, call runtime endpoint directly with `requests` + beare
 External LLM/tool calls can be slow.
 
 Practical rule:
-1. Build local ReAct agent in one cell.
+1. Build local `create_agent`-based agent in one cell.
 2. Put live smoke-test in an optional cell controlled by env flag (`RUN_LOCAL_SMOKE_TEST`).
 
 ### Rule 5: Add a health gate before deploy

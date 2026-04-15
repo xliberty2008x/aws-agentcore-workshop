@@ -7,9 +7,14 @@
 - Tool calling + Observability
 
 ## Швидкий старт
-1. Основний workshop notebook: `workshop_google_docs_rag_e2e.ipynb`
-2. Runtime код для деплою: `runtime_app_agentcore_full.py`
-3. Домашнє завдання: `HW_ASSIGNMENT.md`
+1. Створити локальне середовище:
+   `python3.12 -m venv .venv`
+2. Відкрити `workshop_google_docs_rag_e2e.ipynb`
+3. Вибрати як notebook kernel саме Python з `.venv`
+4. Якщо використовуєш plain Jupyter, а не VS Code, спочатку зареєструй kernel:
+   `./.venv/bin/python -m pip install ipykernel && ./.venv/bin/python -m ipykernel install --user --name aws-agentcore-workshop`
+5. Запустити `Step 0` у notebook, який поставить всі pinned requirements у вибраний kernel
+6. Пройти notebook зверху вниз
 
 ## Test Document
 Для 1-в-1 повторення воркшопу використовуйте цей Google Doc:

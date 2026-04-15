@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import json
 import os
 import re
@@ -8,18 +9,19 @@ import boto3
 import requests
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from botocore.exceptions import ClientError
+from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
+from langchain.tools import ToolRuntime
 
 app = BedrockAgentCoreApp()
-APP_VERSION = "2026-03-17-langgraph-react-v8"
+APP_VERSION = "2026-04-15-langchain-create-agent-v9"
 
 _SETTINGS: dict[str, Any] | None = None
 _AC_RUNTIME = None
 _LLM = None
-_REACT_AGENT = None
+_AGENT = None
 
 STOPWORDS = {
     "about",
@@ -55,22 +57,7 @@ STOPWORDS = {
     "with",
 }
 
-AGENT_CTX: dict[str, Any] = {
-    "doc_id": "",
-    "access_token": "",
-    "oauth_session_uri": "",
-    "mcp_session_id": "",
-    "consent_pending": "0",
-    "max_doc_calls": 1,
-    "doc_call_count": 0,
-    "doc_cached_result": "",
-    "last_authorization_url": "",
-    "last_oauth_session_uri": "",
-    "oauth_return_url": "",
-    "force_authentication": "0",
-}
-
-REACT_SYSTEM_PROMPT = """You are a Google Docs workshop assistant running inside AgentCore Runtime.
+AGENT_SYSTEM_PROMPT = """You are a Google Docs workshop assistant running inside AgentCore Runtime.
 
 You have exactly one tool: get_google_doc.
 Always call get_google_doc before answering any user question about the document.
@@ -80,6 +67,17 @@ If the tool reports ERROR or EMPTY_DOCUMENT, reflect that status and stop.
 If the tool returns DOCUMENT_TEXT, use it to answer the user's question.
 Keep the final answer concise.
 """
+
+
+@dataclass(frozen=True)
+class AgentRuntimeContext:
+    doc_id: str
+    access_token: str
+    oauth_session_uri: str
+    mcp_session_id: str
+    oauth_return_url: str
+    force_authentication: bool
+    max_doc_calls: int
 
 
 def get_settings() -> dict[str, Any]:
@@ -125,22 +123,22 @@ def get_llm():
 
 
 @tool("get_google_doc")
-def get_google_doc_tool() -> str:
+def get_google_doc_tool(runtime: ToolRuntime[AgentRuntimeContext]) -> str:
     """Fetch the configured Google Doc through AgentCore Gateway."""
-    return get_google_doc()
+    return get_google_doc(runtime)
 
 
-def get_react_agent():
-    global _REACT_AGENT
-    if _REACT_AGENT is None:
-        _REACT_AGENT = create_react_agent(
+def get_agent():
+    global _AGENT
+    if _AGENT is None:
+        _AGENT = create_agent(
             model=get_llm(),
             tools=[get_google_doc_tool],
-            prompt=REACT_SYSTEM_PROMPT,
-            version="v2",
+            system_prompt=AGENT_SYSTEM_PROMPT,
+            context_schema=AgentRuntimeContext,
             name="agentcore_google_docs_agent",
         )
-    return _REACT_AGENT
+    return _AGENT
 
 
 def mcp_request(
@@ -284,11 +282,6 @@ def message_to_text(msg: Any) -> str:
     return str(content)
 
 
-def cache_tool_result(result_text: str) -> str:
-    AGENT_CTX["doc_cached_result"] = result_text
-    return result_text
-
-
 def preview_text(text: str, limit: int = 240) -> str:
     if len(text) <= limit:
         return text
@@ -342,9 +335,18 @@ def extract_last_tool_result(messages: list[Any]) -> str:
     return ""
 
 
-def run_react_agent(prompt: str, recursion_limit: int) -> dict[str, Any]:
-    result = get_react_agent().invoke(
+def previous_tool_results(messages: list[Any], tool_name: str = "get_google_doc") -> list[str]:
+    results: list[str] = []
+    for message in messages:
+        if isinstance(message, ToolMessage) and str(getattr(message, "name", "") or "") == tool_name:
+            results.append(message_to_text(message))
+    return results
+
+
+def run_agent(prompt: str, recursion_limit: int, runtime_context: AgentRuntimeContext) -> dict[str, Any]:
+    result = get_agent().invoke(
         {"messages": [{"role": "user", "content": prompt}]},
+        context=runtime_context,
         config={"recursion_limit": recursion_limit},
     )
     messages = list(result.get("messages", []))
@@ -533,46 +535,39 @@ def render_structured_answer(answer: dict[str, Any]) -> str:
     return body
 
 
-def get_google_doc() -> str:
+def get_google_doc(runtime: ToolRuntime[AgentRuntimeContext]) -> str:
     settings = get_settings()
-    doc_id = AGENT_CTX.get("doc_id", "")
-    token = AGENT_CTX.get("access_token", "")
-    oauth_session_uri = AGENT_CTX.get("oauth_session_uri", "")
-    mcp_session_id = AGENT_CTX.get("mcp_session_id", "")
-    consent_pending = AGENT_CTX.get("consent_pending", "0") == "1"
-    oauth_return_url = str(AGENT_CTX.get("oauth_return_url", "")).strip()
-    force_authentication = AGENT_CTX.get("force_authentication", "0") == "1"
-    max_doc_calls = int(AGENT_CTX.get("max_doc_calls", 1))
-    doc_call_count = int(AGENT_CTX.get("doc_call_count", 0))
-    cached = str(AGENT_CTX.get("doc_cached_result", ""))
+    ctx = runtime.context
+    state = runtime.state or {}
+    messages = list(state.get("messages", []))
+    doc_id = str(ctx.doc_id).strip()
+    token = str(ctx.access_token).strip()
+    oauth_session_uri = str(ctx.oauth_session_uri).strip()
+    mcp_session_id = str(ctx.mcp_session_id).strip()
+    oauth_return_url = str(ctx.oauth_return_url).strip()
+    force_authentication = bool(ctx.force_authentication)
+    max_doc_calls = max(1, int(ctx.max_doc_calls))
+    prior_tool_results = previous_tool_results(messages)
+    doc_call_count = len(prior_tool_results)
+    cached = prior_tool_results[-1] if prior_tool_results else ""
 
     if not doc_id:
-        return cache_tool_result("ERROR: doc_id is empty in agent context.")
+        return "ERROR: doc_id is empty in agent context."
     if not token:
-        return cache_tool_result("ERROR: user_access_token is empty in agent context.")
-
-    if consent_pending:
-        auth_url = AGENT_CTX.get("last_authorization_url", "")
-        req_uri = AGENT_CTX.get("last_oauth_session_uri", "")
-        return cache_tool_result(
-            "CONSENT_REQUIRED\n"
-            f"authorization_url: {auth_url}\n"
-            f"oauth_session_uri: {req_uri}"
-        )
+        return "ERROR: user_access_token is empty in agent context."
 
     if doc_call_count >= max_doc_calls:
         if cached:
             return cached
-        return cache_tool_result(f"ERROR: get_google_doc call budget reached ({max_doc_calls}).")
+        return f"ERROR: get_google_doc call budget reached ({max_doc_calls})."
 
     if oauth_session_uri:
         try:
             complete_oauth_session(token, oauth_session_uri)
-            AGENT_CTX["consent_pending"] = "0"
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "Unknown")
             msg = exc.response.get("Error", {}).get("Message", str(exc))
-            return cache_tool_result(
+            return (
                 "ERROR: complete_resource_token_auth failed.\n"
                 f"code: {code}\n"
                 f"message: {msg}"
@@ -605,40 +600,36 @@ def get_google_doc() -> str:
     except requests.HTTPError as exc:
         status = getattr(exc.response, "status_code", "unknown")
         body = (getattr(exc.response, "text", "") or "")[:800]
-        return cache_tool_result(
+        return (
             "ERROR: MCP HTTP failure while calling Google Docs tool.\n"
             f"status: {status}\n"
             f"body: {body}"
         )
     except requests.RequestException as exc:
-        return cache_tool_result(f"ERROR: MCP network failure while calling Google Docs tool: {exc}")
-    AGENT_CTX["doc_call_count"] = doc_call_count + 1
+        return f"ERROR: MCP network failure while calling Google Docs tool: {exc}"
 
     if "error" in payload and payload["error"].get("code") == -32042:
         auth_url = extract_elicitation_url(payload) or ""
         req_uri = extract_request_uri_from_url(auth_url) or ""
-        AGENT_CTX["consent_pending"] = "1"
-        AGENT_CTX["last_authorization_url"] = auth_url
-        AGENT_CTX["last_oauth_session_uri"] = req_uri
-        return cache_tool_result(
+        return (
             "CONSENT_REQUIRED\n"
             f"authorization_url: {auth_url}\n"
             f"oauth_session_uri: {req_uri}"
         )
 
     if "error" in payload:
-        return cache_tool_result(f"ERROR: MCP get_google_doc failed: {payload['error']}")
+        return f"ERROR: MCP get_google_doc failed: {payload['error']}"
 
     raw_text = extract_mcp_text(payload)
     if bool((payload.get("result") or {}).get("isError")):
-        return cache_tool_result(
+        return (
             "ERROR: MCP get_google_doc returned isError=true.\n"
             f"message: {raw_text[:800]}"
         )
 
     doc_payload = parse_google_doc_payload(payload)
     if not doc_payload:
-        return cache_tool_result(
+        return (
             "ERROR: Could not parse Google Docs tool response.\n"
             f"raw: {raw_text[:800]}"
         )
@@ -647,10 +638,9 @@ def get_google_doc() -> str:
     source_url = f"https://docs.google.com/document/d/{doc_id}/edit"
 
     if not doc_text:
-        return cache_tool_result(f"EMPTY_DOCUMENT\nSOURCE: {source_url}")
+        return f"EMPTY_DOCUMENT\nSOURCE: {source_url}"
 
-    result_text = f"DOCUMENT_TEXT:\n{doc_text}\n\nSOURCE: {source_url}"
-    return cache_tool_result(result_text)
+    return f"DOCUMENT_TEXT:\n{doc_text}\n\nSOURCE: {source_url}"
 
 
 def _session_from_context(context: Any) -> str:
@@ -666,23 +656,10 @@ def invoke(payload: dict, context=None):
     thread_id = str(payload.get("thread_id") or "").strip() or _session_from_context(context) or "runtime-default-thread"
     prompt_text = str(payload.get("prompt", "")).strip()
 
-    AGENT_CTX["doc_id"] = str(payload.get("doc_id", "")).strip()
-    AGENT_CTX["access_token"] = str(payload.get("user_access_token", "")).strip()
-    AGENT_CTX["oauth_session_uri"] = str(payload.get("oauth_session_uri", "")).strip()
-    AGENT_CTX["mcp_session_id"] = str(payload.get("mcp_session_id", "")).strip() or thread_id
-    AGENT_CTX["consent_pending"] = "0"
-    AGENT_CTX["oauth_return_url"] = str(payload.get("oauth_return_url", "")).strip()
-    AGENT_CTX["force_authentication"] = "1" if bool(payload.get("force_authentication", False)) else "0"
-
     try:
-        AGENT_CTX["max_doc_calls"] = max(1, min(3, int(payload.get("max_doc_calls", 1))))
+        max_doc_calls = max(1, min(3, int(payload.get("max_doc_calls", 1))))
     except (TypeError, ValueError):
-        AGENT_CTX["max_doc_calls"] = 1
-
-    AGENT_CTX["doc_call_count"] = 0
-    AGENT_CTX["doc_cached_result"] = ""
-    AGENT_CTX["last_authorization_url"] = ""
-    AGENT_CTX["last_oauth_session_uri"] = ""
+        max_doc_calls = 1
 
     try:
         max_steps = int(payload.get("max_steps", 5))
@@ -690,18 +667,25 @@ def invoke(payload: dict, context=None):
         max_steps = 5
     recursion_limit = max(2, min(8, max_steps))
 
+    runtime_context = AgentRuntimeContext(
+        doc_id=str(payload.get("doc_id", "")).strip(),
+        access_token=str(payload.get("user_access_token", "")).strip(),
+        oauth_session_uri=str(payload.get("oauth_session_uri", "")).strip(),
+        mcp_session_id=str(payload.get("mcp_session_id", "")).strip() or thread_id,
+        oauth_return_url=str(payload.get("oauth_return_url", "")).strip(),
+        force_authentication=bool(payload.get("force_authentication", False)),
+        max_doc_calls=max_doc_calls,
+    )
+
     try:
-        agent_state = run_react_agent(prompt_text or "Summarize the document.", recursion_limit)
+        agent_state = run_agent(prompt_text or "Summarize the document.", recursion_limit, runtime_context)
         messages = list(agent_state.get("messages", []))
-        tool_text = str(AGENT_CTX.get("doc_cached_result", "")).strip() or extract_last_tool_result(messages)
+        tool_text = extract_last_tool_result(messages)
         trace = extract_tool_trace(messages)
         tools_used, tool_call_counts = summarize_tool_usage(messages)
-        if not tool_call_counts and AGENT_CTX.get("doc_call_count", 0):
-            tool_call_counts = {"get_google_doc": int(AGENT_CTX.get("doc_call_count", 0))}
-            tools_used = ["get_google_doc"]
     except Exception as exc:
         messages = []
-        tool_text = f"ERROR: LangGraph agent invoke failed: {exc}"
+        tool_text = f"ERROR: LangChain agent invoke failed: {exc}"
         trace = []
         tools_used = []
         tool_call_counts = {}
@@ -805,7 +789,7 @@ def invoke(payload: dict, context=None):
         "tools_used": tools_used,
         "tool_call_counts": tool_call_counts,
         "tool_call_limits": {
-            "get_google_doc": AGENT_CTX.get("max_doc_calls", 1),
+            "get_google_doc": runtime_context.max_doc_calls,
         },
         "answer_mode": answer_mode,
         "consent_required": consent_required,
