@@ -25,6 +25,7 @@
 Отже, що таке AgentCore?
 
 AgentCore - це модульна agentic платформа, яка покриває повний життєвий цикл AI агента:
+
 - Побудову - ви пишете логіку агента
 - Розгортання - платформа деплоїть у production
 - Управління та governance - централізований контроль безпеки та доступу
@@ -33,7 +34,7 @@ AgentCore - це модульна agentic платформа, яка покри�
 
 Три ключові характеристики, які відрізняють AgentCore:
 
-**По-перше, Enterprise-grade безпека** - це не toy project, а рішення для корпоративних потреб з повним контролем доступу, аудитом, та шифруванням.
+**По-перше, Enterprise-grade безпека** - це рішення для корпоративних потреб з повним контролем доступу, аудитом, та шифруванням.
 
 **По-друге, Framework-agnostic** - ви можете використовувати LangGraph, CrewAI, LlamaIndex, Strands, або написати власний фреймворк. AgentCore не нав'язує конкретний інструмент.
 
@@ -51,7 +52,7 @@ AgentCore складається з 9 незалежних модульних с
 
 Швидко пройдемося по кожному:
 
-**Runtime** - serverless середовище, де живе ваш агент. Ви не управляєте серверами, контейнерами або Lambda functions вручну.
+**Runtime** - serverless середовище, де живе ваш агент. Ви не управляєте серверами, контейненами або Lambda functions вручну.
 
 **Memory** - короткострокова та довгострокова пам'ять. Агент пам'ятає контекст розмови та user preferences між сесіями.
 
@@ -67,7 +68,7 @@ AgentCore складається з 9 незалежних модульних с
 
 **Evaluations** - оцінка якості відповідей агента за різними метриками.
 
-**Policy** - контроль доступу через Cedar policy language. Ви описуєте rules у декларативному форматі.
+**Policy** - контроль доступу. Ви описуєте rules у декларативному форматі.
 
 Ключовий месседж - ці модулі працюють разом, але ви не зобов'язані використовувати всі. Можна почати з Runtime та Gateway, а потім додати Memory чи Observability за потреби.
 
@@ -81,7 +82,7 @@ AgentCore складається з 9 незалежних модульних с
 
 **Автономні агенти** - найпопулярніший сценарій. Customer support bots, які можуть читати knowledge base, відповідати на питання, та ескалейтувати складні кейси. Workflow automation агенти для internal processes - наприклад, approval workflows для invoices або travel requests. Research assistants, які збирають інформацію з різних джерел та готують summaries.
 
-**MCP сервери** - якщо у вас є APIs, які ви хочете зробити доступними для агентів через стандартизований протокол. Замість того щоб писати custom integration для кожного агента, ви створюєте один MCP server через Gateway, і всі агенти можуть його використовувати. Це unified tool interface для вашої організації.
+**MCP сервери** - якщо у вас є APIs, які ви хочете зробити доступними для агентів через стандартизований протокол. Замість того щоб писати custom integration для кожного агента, ви створюєте один MCP server через Gateway, і всі агенти можуть його використовувати.
 
 **Agent платформи** - якщо ви будуєте platform as a service для AI агентів. AgentCore надає централізований governance - ви контролюєте security policies, observability, та compliance в одному місці. Multi-tenant deployment з ізоляцією між різними командами або клієнтами. Enterprise security built-in.
 
@@ -95,7 +96,7 @@ AgentCore складається з 9 незалежних модульних с
 
 Runtime - це серце AgentCore. Secure, serverless середовище, спеціально створене для AI агентів.
 
-На діаграмі ви бачите flow: developer пише код агента з будь-яким фреймворком та моделлю, додає простий decorator `@app.entrypoint`, запускає `configure` та `launch` - і ваш локальний код деплоїться у AWS.
+На діаграмі ви бачите flow: developer пише код агента з будь-яким фреймворком та моделлю, додає простий decorator, запускає `configure` та `launch` - і ваш локальний код деплоїться у AWS.
 
 Ключова перевага, яку я хочу підкреслити: **Локальний код стає production deployment за кілька рядків**.
 
@@ -125,7 +126,7 @@ Runtime - це серце AgentCore. Secure, serverless середовище, с
 
 **Extended Execution** - до 8 годин для асинхронних workloads. Це не типові 15 хвилин Lambda limit. Якщо ваш агент робить довгий research task або complex data processing, він може працювати години.
 
-**Consumption Pricing** - ви платите тільки за фактичне використання, не за I/O wait. Якщо агент чекає на відповідь від external API, ви не платите за цей час. Це важливо для cost optimization.
+**Consumption Pricing** - ви платите тільки за фактичне використання, не за простой Якщо агент чекає на відповідь від external API, ви не платите за цей час. Це важливо для cost optimization.
 
 ---
 
@@ -137,13 +138,13 @@ Runtime - це серце AgentCore. Secure, serverless середовище, с
 
 **Built-in Auth** - інтеграція з Identity Providers. Cognito, Okta, Azure Entra ID - ви не пишете authentication layer з нуля. Підключаєте свій IdP, і Runtime автоматично валідує JWT tokens.
 
-**Agent Observability** - трейсинг reasoning steps та tool invocations. Це не просто application logs. Ви бачите, як агент "думає" - які reasoning steps він робить, які tools викликає, що отримує у відповідь. Це критично для debugging складних agentic workflows.
+**Agent Observability** -  Це не просто application logs. Ви бачите, як агент "думає" - які reasoning steps він робить, які інструменти викликає, що отримує у відповідь. Це критично для debugging складних agentic workflows.
 
 **100MB Payloads** - підтримка multimodal content. Ви можете передавати великі зображення, документи, відео. Це не обмеження в 6MB як у API Gateway. AgentCore створений для роботи з rich media.
 
 **Bidirectional Streaming** - WebSocket для real-time взаємодії. User пише повідомлення, агент починає відповідати ще до того як закінчив reasoning. Це покращує user experience - користувач бачить progress, а не чекає 30 секунд на повну відповідь.
 
-Всі ці features "працюють з коробки" - ви не конфігуруєте їх manually, вони частина платформи.
+Всі ці features "працюють з коробки" - ви не конфігуруєте їх руками, вони частина платформи.
 
 ---
 
@@ -166,19 +167,7 @@ def invoke(payload, context):
 app.run()
 ```
 
-**Перший рядок** - import. Ви встановили SDK через pip, тепер імпортуєте клас.
-
-**Другий рядок** - ініціалізація app. Це wrapper навколо вашого агента.
-
-**Третій блок** - decorate свою entrypoint функцію. `@app.entrypoint` каже платформі: "ось entry point мого агента". У цій функції ви викликаєте свій LangGraph граф, CrewAI crew, або custom logic.
-
-**Четвертий рядок** - `app.run()`. Локально це запускає development server. В production це створює HTTP endpoint для invocation.
-
-Весь ваш existing код агента залишається без змін. Ви просто додаєте ці 3 рядки wrapper коду.
-
-Після цього ви запускаєте `agentcore configure` для setup AWS resources та `agentcore launch` для deployment. Платформа package ваш код, створює Docker image, деплоїть у Runtime, налаштовує networking, security, observability.
-
-Це принципова різниця порівняно з написанням CloudFormation templates, ECS task definitions, або Lambda layers вручну.
+Після цього ви запускаєте `agentcore configure` для setup AWS resources та `agentcore launch` для deployment. Платформа пакує ваш код, створює Docker image, деплоїть у Runtime, налаштовує networking, security, observability.
 
 Тепер перейдемо до Identity - як контролювати хто має доступ до агента та до яких ресурсів агент має доступ.
 
@@ -188,7 +177,7 @@ app.run()
 
 **[12:00 - 13:30]**
 
-Identity - це comprehensive сервіс для управління автентифікацією та авторизацією.
+Identity - це комплексний сервіс для управління автентифікацією та авторизацією.
 
 Фундаментальна проблема, яку він вирішує: **Безпечний доступ агентів до user-specific даних**.
 
@@ -196,11 +185,11 @@ Identity - це comprehensive сервіс для управління авте�
 
 AgentCore Identity базується на ключовому принципі: **Delegation, not Impersonation**.
 
-Що це означає? Агент НЕ прикидається користувачем. Агент автентифікується як він сам (як окрема identity), але несе verifiable user context.
+Що це означає? Агент НЕ прикидається користувачем. Агент автентифікується як він сам (як окрема identity).
 
 Це важливо для audit trails. Ви завжди знаєте: це агент викликав API, але від імені конкретного користувача. У logs ви бачите обидві identities.
 
-На діаграмі показано flow: User викликає Agent, Agent має свою власну identity ("Who is this agent?"), але також несе user context для outbound calls до external resources.
+На діаграмі показано flow: User викликає Agent, Agent має свою власну identity ("Who is this agent?"), але також несе user context для outbound calls до зовнішніх ресурсів.
 
 Identity має два напрямки: Inbound та Outbound. Зараз розглянемо кожен детальніше.
 
@@ -226,9 +215,7 @@ Inbound Authentication відповідає на два питання:
 6. Runtime перевіряє `allowedClients` - чи є цей client_id у whitelist
 7. Якщо все ok - invoke проходить, якщо ні - отримуєте 401 Unauthorized
 
-Ключовий момент: ви не пишете цю логіку вручну. Ви просто конфігуруєте у AgentCore:
-- `discoveryUrl` вашого IdP (наприклад, `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXX/.well-known/openid-configuration`)
-- `allowedClients` - список client IDs, які мають permission
+Ключовий момент: ви не пишете цю логіку вручну. Ви просто конфігуруєте у AgentCore це можна робити як через код так і через UI
 
 Платформа робить всю валідацію автоматично.
 
@@ -242,7 +229,7 @@ Inbound Authentication відповідає на два питання:
 
 Outbound Authentication - це коли агент викликає зовнішні ресурси.
 
-Питання: **"Is agent allowed to access this resource on behalf of user?"**
+Питання: **"Чи дозволено агенту викликати ресурси на правах юзера"**
 
 Два основні типи:
 
@@ -251,12 +238,14 @@ Outbound Authentication - це коли агент викликає зовніш
 **External Services** - Google, Salesforce, Stripe, будь-який third-party API. Тут використовуємо OAuth 2.0.
 
 Два варіанти OAuth:
+
 - **2-legged (client credentials)** - агент автентифікується як application. Доступ до ресурсів, які належать application, не конкретному user.
 - **3-legged (authorization code)** - user дає explicit consent. Агент отримує user-scoped access token. Це той сценарій, який ми бачили в use case - агент читає Google Docs користувача.
 
 На слайді ви бачите приклад use case: **Агент читає Google Docs користувача**.
 
 Як це працює практично:
+
 1. User викликає агента
 2. Агент намагається прочитати Google Doc
 3. Gateway перевіряє - чи є у нас OAuth token для цього user?
@@ -270,26 +259,6 @@ Outbound Authentication - це коли агент викликає зовніш
 
 ---
 
-## Слайд 12: Inbound vs Outbound
-
-**[16:30 - 17:30]**
-
-Швидке порівняння двох типів authentication, щоб закріпити розуміння.
-
-**Inbound** - це про вхідний traffic. User → Agent. Validate user access to agent. Питання: хто має право викликати цього агента? Protocol: JWT/OIDC.
-
-**Outbound** - це про вихідний traffic. Agent → External API. Delegate user permissions to resources. Питання: до яких ресурсів агент може достукатися від імені user? Protocol: OAuth 2.0.
-
-Security boundary різний:
-- Inbound - це identity perimeter. Хто може зайти в систему.
-- Outbound - це delegation to external services. Що агент може робити за межами системи.
-
-Обидва критично важливі для secure production deployment. Якщо у вас є тільки inbound auth, але немає outbound - агент може мати надмірні permissions. Якщо є outbound, але немає inbound - будь-хто може викликати вашого агента.
-
-AgentCore покриває обидва напрямки natively.
-
----
-
 ## Слайд 13: Identity Benefits
 
 **[17:30 - 18:30]**
@@ -298,9 +267,8 @@ AgentCore покриває обидва напрямки natively.
 
 **Zero Trust Security** - принцип least privilege. Кожен component має мінімально необхідні permissions. User має доступ тільки до тих агентів, які йому потрібні. Агент має доступ тільки до тих resources, які необхідні для виконання task. Немає "admin" users з доступом до всього.
 
-**Cross-Platform** - працює не тільки з AWS. Ви можете інтегрувати з іншими clouds - GCP, Azure. Можете підключати on-premise resources. Це не lock-in в AWS ecosystem. Identity працює як universal layer поверх різних providers.
-
-**Audit Trails** - compliance та security monitoring. Кожен authentication attempt, кожен API call логується. Ви бачите who, when, what. Це критично для enterprise compliance requirements - SOC 2, HIPAA, GDPR. Ви можете показати auditors повний trail хто і коли мав доступ до sensitive data.
+**Cross-Platform** - працює не тільки з AWS. Ви можете інтегрувати з іншими clouds - GCP, Azure. Можете підключати on-premise resources.
+**Audit Trails** - Кожен authentication attempt, кожен API call логується. Ви бачите who, when, what. Це критично для enterprise compliance requirements - SOC 2, HIPAA, GDPR. Ви можете показати auditors повний trail хто і коли мав доступ до sensitive data.
 
 Тепер перейдемо до Memory - як зробити агента stateful.
 
@@ -314,41 +282,19 @@ Memory вирішує фундаментальну проблему: AI аген
 
 Кожен запит до LLM - це fresh start. Модель не пам'ятає попередню розмову, якщо ви не передаєте весь history у prompt. Це працює для simple use cases, але не масштабується.
 
-AgentCore Memory - це fully managed сервіс для збереження context.
+AgentCore Memory - це сервіс для збереження контексту.
 
 Два типи пам'яті:
 
-**Short-term Memory** - turn-by-turn у межах однієї сесії. User каже: "What's the weather in Seattle?" Агент відповідає. User каже: "What about tomorrow?" Агент розуміє, що "tomorrow" означає Seattle, бо пам'ятає контекст.
+**Short-term Memory** - turn-by-turn у межах однієї сесії. User каже: "Яка погода в Києві" Агент відповідає. User каже: "А завтра?" Агент розуміє, що "завтра" означає Київ, бо пам'ятає контекст.
 
-Це зберігається в conversation history. Весь prompt + response chain для поточної сесії.
+Це зберігається в conversation history. Весь prompt + ланцюг відповідей для поточної сесії.
 
-**Long-term Memory** - user preferences між сесіями. User каже: "I prefer window seats." Агент зберігає це як fact. Через тиждень, коли user бронює наступний flight, агент automatically пропонує window seat, навіть якщо user не згадав про це.
+**Long-term Memory** - user preferences між сесіями. User каже: "Я полюбляю місця біля вікна" Агент зберігає це як fact. Через тиждень, коли user бронює наступний flight, агент automatically пропонує window seat, навіть якщо user не згадав про це.
 
 Це не просто RAG over conversation history. Це intelligent extraction ключових facts, preferences, summaries.
 
 Memory не просто зберігає - вона структурує інформацію так, щоб агент міг ефективно її використовувати.
-
----
-
-## Слайд 15: Without vs With Memory
-
-**[20:00 - 21:00]**
-
-Візуальне порівняння, яке показує різницю.
-
-**Without Memory** - кожна взаємодія незалежна. User задає питання, агент відповідає. User задає наступне питання - агент не пам'ятає попередню розмову. Як розмова з кимось, хто має amnesia після кожної фрази.
-
-На діаграмі ви бачите: Agent handles each interaction independently. Немає стрілок між interactions. Кожен запит починається з blank slate.
-
-**With Memory** - context carried forward. Агент пам'ятає попередні turn, знає user preferences. Розмова стає natural, як з людиною.
-
-На діаграмі: Agent ↔ Memory. Bidirectional arrows. Агент читає memory перед тим як відповісти, і пише в memory після interaction.
-
-Новий користувач приходить - агент має context про цього user з попередніх сесій. Навіть якщо це через день, тиждень, місяць.
-
-"New conversation: With context carried forward, the agent delivers smarter, more natural and personalized interactions every time."
-
-Це transforms user experience. Ви не повторюєте себе кожного разу. Агент "знає" вас.
 
 ---
 
@@ -358,9 +304,9 @@ Memory не просто зберігає - вона структурує інф
 
 Чотири concrete use cases для Memory.
 
-**Conversational agents** - customer support з historical context. User звертається вдруге з тією ж проблемою. Агент каже: "I see you contacted us last week about the same issue. Let me check if the solution I provided worked." Це dramatically покращує satisfaction.
+**Conversational agents** - customer support з historical context. User звертається вдруге з тією ж проблемою. Агент каже: "Я вже бачу що ви звертались раніше" Це сильно покращує досвід користувача.
 
-**Task-oriented agents** - workflow tracking. Invoice approval процес розтягується на кілька днів. User каже агенту: "Approve this invoice." Агент: "Got it, I'll process it." Через два дні user питає: "What's the status?" Агент: "The invoice you asked me to approve is now in the finance queue." Агент пам'ятає контекст task.
+**Task-oriented agents** - Invoice approval процес розтягується на кілька днів. User каже агенту: "Апрувни інвойс." Агент: "Зроблю" Через два дні user питає: "What's the status?" Агент: "Інвойс в черзі" Агент пам'ятає контекст task.
 
 **Multi-agent systems** - shared memory для coordination. У вас є research agent та writing agent. Research agent збирає facts, пише їх у shared memory. Writing agent читає ці facts та пише article. Agents coordinate через memory, не через direct communication.
 
@@ -380,22 +326,20 @@ Gateway вирішує проблему: як зробити зовнішні AP
 
 У вас може бути 10 різних APIs - Google Docs, Slack, Stripe, internal REST APIs. Кожен має свою authentication, свій schema, свій error handling.
 
-Без Gateway: ви пишете custom integration для кожного API у кожному агенті. Багато boilerplate code, дублювання логіки.
+Без Gateway: ви пишете custom integration для кожного API у кожному агенті.
 
 **З Gateway: ви перетворюєте всі ці APIs у MCP servers**. MCP - Model Context Protocol - це стандартизований протокол для tool calling.
 
 Агент бачить unified interface. Замість "як викликати Google Docs API з OAuth?" агент просто каже: "listTools" - отримує список доступних tools. "invokeTool('read_google_doc', {doc_id: 'xxx'})" - викликає tool.
 
 Gateway під капотом робить всю складну роботу:
+
 - OAuth token management
 - API schema transformation
 - Error handling та retry logic
 - Rate limiting
 - Logging та monitoring
 
-На діаграмі ви бачите: Agents викликають MCP Client → AgentCore Gateway → External APIs.
-
-Gateway - це те, що дозволяє агентам легко інтегруватися з будь-якими зовнішніми системами.
 
 ---
 
@@ -407,23 +351,12 @@ Gateway працює через концепцію **Gateway Target**.
 
 Три типи targets:
 
-**1. Lambda ARNs** - ви пишете custom Lambda function з будь-якою логікою. Gateway викликає цю Lambda як tool. Це дає максимальну flexibility - ви можете робити що завгодно у Lambda: query database, call internal APIs, complex business logic.
+**1. Lambda ARNs** - ви пишете custom Lambda function з будь-якою логікою. Gateway викликає цю Lambda як tool.
 
-**2. API specifications** - OpenAPI або Smithy schemas. Ви просто даєте Gateway API schema, і він автоматично генерує MCP tools. Наприклад, OpenAPI spec для Google Docs API → Gateway створює tool `read_document`, `list_documents`, etc. Без написання коду.
+**2. API specifications** - Ви просто даєте Gateway API schema, і він автоматично генерує MCP tools. Наприклад, OpenAPI spec для Google Docs API → Gateway створює tool `read_document`, `list_documents`, etc. Без написання коду.
 
 **3. MCP Transport** - Streamable HTTP. Якщо у вас вже є MCP server, Gateway може proxy calls до нього.
 
-MCP операції:
-
-**listTools** - агент питає: які tools доступні? Gateway повертає список з descriptions. LLM використовує ці descriptions для reasoning - який tool викликати.
-
-**invokeTool** - агент викликає конкретний tool з arguments. Gateway валідує arguments, викликає backend (Lambda або API), повертає result.
-
-На діаграмі внизу ви бачите flow:
-- Framework з MCP Client → Gateway
-- Gateway має API Endpoint Targets (Tools 1-3) та Lambda Targets (Tools 4-6)
-
-Gateway - це abstraction layer, який приховує complexity backend integrations від агента.
 
 ---
 
@@ -435,16 +368,16 @@ Gateway також управляє authentication - як inbound, так і out
 
 **Inbound** - User → App → Agent → Gateway. OAuth token передається від user через agent до Gateway. Gateway валідує: чи має цей user доступ до цього Gateway? Чи дозволено викликати ці tools?
 
-На діаграмі ліворуч: Token vault з Integration Identity Provider. Gateway перевіряє token перед тим як allow/deny access.
 
 **Outbound** - Gateway → External resources. Gateway використовує credentials для виклику backend APIs.
 
 Три типи credentials:
+
 - **API Key** → REST endpoint. Просто статичний key.
-- **IAM** → Lambda function. AWS signature v4 для secure calls.
+- **IAM** → Lambda function. AWS signature.
 - **OAuth token** → 3rd party services. Для Google, Salesforce, etc.
 
-На діаграмі праворуч: Gateway викликає різні backends з різними auth mechanisms.
+На діаграмі: Gateway викликає різні backends з різними auth mechanisms.
 
 Gateway інтегрується з AgentCore Identity для централізованого управління credentials.
 
@@ -461,6 +394,7 @@ Observability через CloudTrail - кожен call логується. Ви �
 На слайді приклад: Target 1 має 250 tools, Target 2 має 100 tools, Target 3 має 10 tools. Total 360 tools.
 
 **Without search**: агент викликає `listTools` → отримує всі 360 tools. LLM повинна обробити descriptions всіх 360 tools у prompt. Це:
+
 - Дорого (tokens)
 - Повільно (latency)
 - Неефективно (LLM gublиться серед irrelevant tools)
@@ -468,16 +402,12 @@ Observability через CloudTrail - кожен call логується. Ви �
 **Using search**: агент каже `search("draft a new advertisement")` → Gateway робить semantic search через vector embeddings → повертає 4 most relevant tools.
 
 Як це працює:
+
 1. Коли ви створюєте Gateway Target, платформа automatically генерує embeddings для кожного tool description
 2. Ці embeddings зберігаються у vector database
 3. Коли агент робить search query, Gateway embedить query та шукає k-nearest neighbors
 4. Повертає тільки relevant tools
 
-Це opt-in feature. Ви enable semantic search при CreateGateway API call.
-
-На діаграмі внизу ви бачите приклад: "draft a new advertisement" → returns 4 most relevant tools замість 360.
-
-Приклад: якщо у вас є 50 tools для email operations та 300 tools для інших domains, агент який працює з email отримає тільки relevant email tools, не весь catalog.
 
 ---
 
@@ -487,51 +417,17 @@ Observability через CloudTrail - кожен call логується. Ви �
 
 П'ять ключових переваг Gateway.
 
-**No Infrastructure Management** - fully managed. Ви не deploy Gateway server, не manage scaling, не monitor uptime. AWS робить це за вас.
+fully managed. Ви не deploy Gateway server, не менеджете скейлінг. AWS робить це за вас.
 
 **Unified Interface** - MCP protocol для всіх tools. Агент не знає, що під капотом - Lambda, REST API, або gRPC service. Для агента все виглядає як MCP tools.
 
-**Built-in Auth** - OAuth lifecycle management. Коли user дає consent, Gateway зберігає token securely, автоматично refresh коли expired, handle revocation. Ви не пишете цю логіку.
+**Built-in Auth** - OAuth lifecycle management. Gateway зберігає token securely, автоматично refresh коли expired, handle revocation. Ви не пишете цю логіку.
 
-**Auto Scaling** - no capacity planning. 10 requests per second або 10,000 requests per second - Gateway scales automatically. Ви не provision capacity заздалегідь.
+**Auto Scaling** - no capacity planning. 10 requests per second або 10,000 requests per second - Gateway scales automatically.
 
-**Enterprise Security** - encryption at rest та in transit. Audit logging через CloudTrail. Access controls через IAM policies. Built-in security best practices.
+**Enterprise Security** - encryption,  Audit logging. Access controls через IAM policies. Built-in security best practices.
 
 Gateway - це те, що дозволяє швидко додавати нові integrations без переписування infrastructure code кожного разу.
-
----
-
-## Слайд 22: Ключові переваги AgentCore
-
-**[28:30 - 30:00]**
-
-Ми розглянули всі ключові компоненти. Тепер підсумуємо переваги для трьох груп stakeholders.
-
-**Для розробників:**
-
-**Framework-agnostic** - ви не змінюєте свій існуючий код. LangGraph, CrewAI, custom - все працює.
-
-**Minimal code** - три рядки wrapper коду для production deployment. Не тижні DevOps роботи.
-
-**Local → Cloud seamless** - ваш агент працює локально з mock tools. Той самий код деплоїться у production з real integrations. Smooth transition.
-
-**Для операцій:**
-
-**Fully managed** - немає servers для patch, немає containers для orchestrate. AWS manages infrastructure.
-
-**Security built-in** - authentication, authorization, encryption, audit logs - все out of the box. Ви не пишете security layer з нуля.
-
-**Auto-scaling** - від zero до thousands requests. No manual capacity planning.
-
-**Для бізнесу:**
-
-**Production-ready day one** - ви не чекаєте місяці на production deployment. Prototype → production за days.
-
-**Pay per use** - consumption-based pricing. Ви платите за actual invocations, не за idle capacity.
-
-**Compliance** - built-in features для SOC 2, HIPAA, GDPR compliance. Audit trails, encryption, access controls.
-
-AgentCore - це інвестиція у швидкість delivery та якість production systems.
 
 ---
 
@@ -549,7 +445,7 @@ AgentCore - це інвестиція у швидкість delivery та які
 
 **По-перше**, створимо локального ReAct агента з LangGraph - це той самий агент, про який ми говорили. Він буде розмовляти, reasoning робити, tools викликати. Протестуємо його локально.
 
-**По-друге**, деплоїмо цей агент у AgentCore Runtime - три рядки коду, як ми бачили сьогодні. Локальний код стане production service.
+**По-друге**, деплоїмо цей агент у AgentCore рядків там буде значно більше ніж 3 адже ноутбук е2е і довелось покрити багато edge кейсів. Локальний код стане production service.
 
 **По-третє**, підключимо OAuth авторизацію - трьохстороння авторизація з Google. User дає consent, агент отримує доступ до Google Docs конкретного користувача.
 
@@ -563,22 +459,3 @@ AgentCore - це інвестиція у швидкість delivery та які
 
 До зустрічі на наступному воркшопі! 🚀
 
----
-
-**Загальні рекомендації по delivery:**
-
-1. **Темп** - не поспішайте. Краще закінчити за 35 хвилин з pauses для питань, ніж гнати 40 слайдів за 25 хвилин.
-
-2. **Eye contact** - дивіться на аудиторію, не на слайди. Слайди - це support для вас, не script для читання.
-
-3. **Паузи** - після кожного ключового statement робіть паузу 2-3 секунди. Це дає час аудиторії засвоїти information.
-
-4. **Примери** - коли говорите про abstract concepts (authentication, memory), давайте concrete приклади. "Уявіть, що ви будуєте customer support bot..."
-
-5. **Енергія** - перші 5 хвилин та останні 5 хвилин - найважливіші. Hook аудиторію на початку, strong finish наприкінці.
-
-6. **Питання** - якщо хтось задає питання під час презентації, швидко відповідайте якщо це clarification, або кажіть "гарне питання, давайте повернемося до цього після слайду про X".
-
-7. **Технічні терміни** - коли вперше використовуєте термін (MCP, OAuth 3LO, microVM), коротко explain що це означає. Аудиторія Junior/Mid, не всі можуть знати.
-
-Успіху з презентацією! 🎤

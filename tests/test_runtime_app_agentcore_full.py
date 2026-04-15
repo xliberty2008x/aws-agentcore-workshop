@@ -1,7 +1,29 @@
 import unittest
 from unittest.mock import patch
 
+from langchain_core.messages import AIMessage, ToolMessage
+
 import runtime_app_agentcore_full as runtime_app
+
+
+def mock_react_state(tool_output: str, final_text: str = "Tool completed.") -> dict[str, list]:
+    return {
+        "messages": [
+            AIMessage(
+                content="Calling tool",
+                tool_calls=[
+                    {
+                        "name": "get_google_doc",
+                        "args": {},
+                        "id": "call-1",
+                        "type": "tool_call",
+                    }
+                ],
+            ),
+            ToolMessage(content=tool_output, tool_call_id="call-1", name="get_google_doc"),
+            AIMessage(content=final_text),
+        ]
+    }
 
 
 class RuntimeAppTests(unittest.TestCase):
@@ -59,7 +81,11 @@ class RuntimeAppTests(unittest.TestCase):
         )
 
         with (
-            patch.object(runtime_app, "get_google_doc", return_value=fake_tool_output),
+            patch.object(
+                runtime_app,
+                "run_react_agent",
+                return_value=mock_react_state(fake_tool_output, final_text="Here is the summary."),
+            ),
             patch.object(
                 runtime_app,
                 "get_settings",
@@ -78,6 +104,67 @@ class RuntimeAppTests(unittest.TestCase):
         self.assertEqual(payload["answer"]["kind"], "bullet_summary")
         self.assertTrue(payload["answer"]["bullets"])
         self.assertIn("Sources:", payload["response"])
+        self.assertEqual(payload["tool_call_counts"], {"get_google_doc": 1})
+        self.assertEqual(payload["tools_used"], ["get_google_doc"])
+        self.assertEqual(payload["tool_trace"][0]["event"], "tool_call")
+        self.assertEqual(payload["tool_trace"][1]["event"], "tool_result")
+
+    def test_invoke_returns_consent_payload_when_gateway_needs_consent(self) -> None:
+        mock_response = (
+            "CONSENT_REQUIRED\n"
+            "authorization_url: https://example.com/auth\n"
+            "oauth_session_uri: urn:ietf:params:oauth:request_uri:test"
+        )
+
+        with (
+            patch.object(
+                runtime_app,
+                "run_react_agent",
+                return_value=mock_react_state(mock_response, final_text="Consent required."),
+            ),
+            patch.object(
+                runtime_app,
+                "get_settings",
+                return_value={"DOC_CONTEXT_MAX_CHARS": 12000, "AWS_REGION": "us-east-1"},
+            ),
+        ):
+            payload = runtime_app.invoke(
+                {
+                    "prompt": "Summarize incident response in 6 bullets",
+                    "doc_id": "test-doc",
+                    "user_access_token": "token",
+                }
+            )
+
+        self.assertTrue(payload["consent_required"])
+        self.assertIn("bedrock-agentcore", payload["authorization_url"])
+        self.assertIn("request_uri%3Atest", payload["authorization_url"])
+        self.assertEqual(payload["oauth_session_uri"], "urn:ietf:params:oauth:request_uri:test")
+        self.assertEqual(payload["answer"]["kind"], "consent")
+
+    def test_invoke_returns_error_when_tool_fails(self) -> None:
+        with (
+            patch.object(
+                runtime_app,
+                "run_react_agent",
+                return_value=mock_react_state("ERROR: http failure", final_text="Tool failed."),
+            ),
+            patch.object(
+                runtime_app,
+                "get_settings",
+                return_value={"DOC_CONTEXT_MAX_CHARS": 12000, "AWS_REGION": "us-east-1"},
+            ),
+        ):
+            payload = runtime_app.invoke(
+                {
+                    "prompt": "Summarize incident response in 6 bullets",
+                    "doc_id": "test-doc",
+                    "user_access_token": "token",
+                }
+            )
+
+        self.assertEqual(payload["answer_mode"], "error")
+        self.assertEqual(payload["answer"]["kind"], "error")
 
 
 if __name__ == "__main__":
