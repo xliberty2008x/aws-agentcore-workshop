@@ -3,20 +3,23 @@ import json
 import os
 import re
 import urllib.parse
-from typing import Any
+from typing import Any, Literal
 
 import boto3
 import requests
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
 from botocore.exceptions import ClientError
 from langchain.agents import create_agent
+from langchain.agents.structured_output import ToolStrategy
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.tools import ToolRuntime
+from pydantic import BaseModel, Field
 
 app = BedrockAgentCoreApp()
 APP_VERSION = "2026-04-15-langchain-create-agent-v9"
+WORKSHOP_TOOL_NAME = "get_google_doc"
 
 _SETTINGS: dict[str, Any] | None = None
 _AC_RUNTIME = None
@@ -62,10 +65,10 @@ AGENT_SYSTEM_PROMPT = """You are a Google Docs workshop assistant running inside
 You have exactly one tool: get_google_doc.
 Always call get_google_doc before answering any user question about the document.
 Do not invent document content.
-If the tool reports CONSENT_REQUIRED, explain that consent is required and stop.
-If the tool reports ERROR or EMPTY_DOCUMENT, reflect that status and stop.
-If the tool returns DOCUMENT_TEXT, use it to answer the user's question.
-Keep the final answer concise.
+If the tool says consent is required, stop and explain that consent is required.
+If the tool says the document is empty or unavailable, reflect that status and stop.
+If the tool returns document text, answer only from that document and cite the provided source URL.
+Use the structured response schema for document-grounded answers.
 """
 
 
@@ -78,6 +81,33 @@ class AgentRuntimeContext:
     oauth_return_url: str
     force_authentication: bool
     max_doc_calls: int
+
+
+class GoogleDocToolArtifact(BaseModel):
+    kind: Literal["document", "consent", "error", "empty"]
+    authorization_url: str = ""
+    oauth_session_uri: str = ""
+    document_text: str = ""
+    source_url: str = ""
+    error_message: str = ""
+
+
+class WorkshopStructuredResponse(BaseModel):
+    kind: Literal["bullet_summary", "not_found"] = Field(
+        description="Use bullet_summary when the document contains the answer, else not_found."
+    )
+    bullets: list[str] = Field(
+        default_factory=list,
+        description="Short factual bullets grounded only in the Google Doc.",
+    )
+    sources: list[str] = Field(
+        default_factory=list,
+        description="Source links used for the answer.",
+    )
+    message: str = Field(
+        default="",
+        description="Short fallback message, mainly for not_found.",
+    )
 
 
 def get_settings() -> dict[str, Any]:
@@ -122,8 +152,8 @@ def get_llm():
     return _LLM
 
 
-@tool("get_google_doc")
-def get_google_doc_tool(runtime: ToolRuntime[AgentRuntimeContext]) -> str:
+@tool(WORKSHOP_TOOL_NAME, response_format="content_and_artifact")
+def get_google_doc_tool(runtime: ToolRuntime[AgentRuntimeContext]) -> tuple[str, dict[str, Any]]:
     """Fetch the configured Google Doc through AgentCore Gateway."""
     return get_google_doc(runtime)
 
@@ -135,6 +165,10 @@ def get_agent():
             model=get_llm(),
             tools=[get_google_doc_tool],
             system_prompt=AGENT_SYSTEM_PROMPT,
+            response_format=ToolStrategy(
+                WorkshopStructuredResponse,
+                tool_message_content="Structured workshop answer captured.",
+            ),
             context_schema=AgentRuntimeContext,
             name="agentcore_google_docs_agent",
         )
@@ -288,12 +322,29 @@ def preview_text(text: str, limit: int = 240) -> str:
     return text[:limit] + "..."
 
 
+def tool_artifact_to_content(artifact: GoogleDocToolArtifact) -> str:
+    if artifact.kind == "consent":
+        return (
+            "Consent is required before the Google Doc can be accessed.\n"
+            "Stop and tell the user to complete browser authorization."
+        )
+    if artifact.kind == "error":
+        return artifact.error_message or "The Google Docs request failed."
+    if artifact.kind == "empty":
+        source_line = f"\nSource URL: {artifact.source_url}" if artifact.source_url else ""
+        return f"The document is empty.{source_line}"
+    source_line = f"\nSource URL: {artifact.source_url}" if artifact.source_url else ""
+    return f"Use this Google Doc content to answer the question.{source_line}\n\n{artifact.document_text}"
+
+
 def extract_tool_trace(messages: list[Any]) -> list[dict[str, Any]]:
     trace: list[dict[str, Any]] = []
     step = 1
     for message in messages:
         if isinstance(message, AIMessage):
             for tool_call in getattr(message, "tool_calls", []) or []:
+                if str(tool_call.get("name", "")) != WORKSHOP_TOOL_NAME:
+                    continue
                 trace.append(
                     {
                         "step": step,
@@ -304,6 +355,8 @@ def extract_tool_trace(messages: list[Any]) -> list[dict[str, Any]]:
                 )
                 step += 1
         elif isinstance(message, ToolMessage):
+            if str(getattr(message, "name", "") or "") != WORKSHOP_TOOL_NAME:
+                continue
             trace.append(
                 {
                     "step": step,
@@ -322,7 +375,7 @@ def summarize_tool_usage(messages: list[Any]) -> tuple[list[str], dict[str, int]
         if not isinstance(message, ToolMessage):
             continue
         tool_name = str(getattr(message, "name", "") or "")
-        if not tool_name:
+        if tool_name != WORKSHOP_TOOL_NAME:
             continue
         counts[tool_name] = counts.get(tool_name, 0) + 1
     return list(counts), counts
@@ -330,17 +383,58 @@ def summarize_tool_usage(messages: list[Any]) -> tuple[list[str], dict[str, int]
 
 def extract_last_tool_result(messages: list[Any]) -> str:
     for message in reversed(messages):
-        if isinstance(message, ToolMessage):
+        if isinstance(message, ToolMessage) and str(getattr(message, "name", "") or "") == WORKSHOP_TOOL_NAME:
             return message_to_text(message)
     return ""
 
 
-def previous_tool_results(messages: list[Any], tool_name: str = "get_google_doc") -> list[str]:
+def previous_tool_results(messages: list[Any], tool_name: str = WORKSHOP_TOOL_NAME) -> list[str]:
     results: list[str] = []
     for message in messages:
         if isinstance(message, ToolMessage) and str(getattr(message, "name", "") or "") == tool_name:
             results.append(message_to_text(message))
     return results
+
+
+def tool_artifact_from_legacy_text(tool_text: str) -> GoogleDocToolArtifact:
+    parsed = parse_tool_output(tool_text)
+    if parsed["kind"] == "consent":
+        return GoogleDocToolArtifact(
+            kind="consent",
+            authorization_url=parsed.get("authorization_url", ""),
+            oauth_session_uri=parsed.get("oauth_session_uri", ""),
+        )
+    if parsed["kind"] == "error":
+        return GoogleDocToolArtifact(kind="error", error_message=tool_text)
+    if parsed["kind"] == "empty":
+        return GoogleDocToolArtifact(kind="empty", source_url=parsed.get("source_url", ""))
+    if parsed["kind"] == "document":
+        return GoogleDocToolArtifact(
+            kind="document",
+            document_text=parsed.get("document_text", ""),
+            source_url=parsed.get("source_url", ""),
+        )
+    return GoogleDocToolArtifact(kind="error", error_message="Unexpected tool output format.")
+
+
+def normalize_tool_artifact(raw_artifact: Any, fallback_text: str = "") -> GoogleDocToolArtifact:
+    if isinstance(raw_artifact, GoogleDocToolArtifact):
+        return raw_artifact
+    if isinstance(raw_artifact, dict):
+        try:
+            return GoogleDocToolArtifact.model_validate(raw_artifact)
+        except Exception:
+            pass
+    if fallback_text:
+        return tool_artifact_from_legacy_text(fallback_text)
+    return GoogleDocToolArtifact(kind="error", error_message="Missing tool artifact.")
+
+
+def extract_last_tool_artifact(messages: list[Any]) -> GoogleDocToolArtifact:
+    for message in reversed(messages):
+        if isinstance(message, ToolMessage) and str(getattr(message, "name", "") or "") == WORKSHOP_TOOL_NAME:
+            return normalize_tool_artifact(getattr(message, "artifact", None), message_to_text(message))
+    return GoogleDocToolArtifact(kind="error", error_message="Missing get_google_doc tool result.")
 
 
 def run_agent(prompt: str, recursion_limit: int, runtime_context: AgentRuntimeContext) -> dict[str, Any]:
@@ -355,7 +449,11 @@ def run_agent(prompt: str, recursion_limit: int, runtime_context: AgentRuntimeCo
         if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
             final_ai_text = message_to_text(message)
             break
-    return {"messages": messages, "final_ai_text": final_ai_text}
+    return {
+        "messages": messages,
+        "final_ai_text": final_ai_text,
+        "structured_response": result.get("structured_response"),
+    }
 
 
 def parse_tool_output(tool_text: str) -> dict[str, str]:
@@ -535,7 +633,45 @@ def render_structured_answer(answer: dict[str, Any]) -> str:
     return body
 
 
-def get_google_doc(runtime: ToolRuntime[AgentRuntimeContext]) -> str:
+def normalize_structured_response(
+    structured_response: Any,
+    prompt: str,
+    source_url: str,
+) -> dict[str, Any]:
+    if isinstance(structured_response, BaseModel):
+        payload = structured_response.model_dump()
+    elif isinstance(structured_response, dict):
+        payload = dict(structured_response)
+    else:
+        payload = {}
+
+    kind = str(payload.get("kind") or "not_found")
+    bullets = [str(item).strip() for item in payload.get("bullets", []) if str(item).strip()]
+    sources = [str(item).strip() for item in payload.get("sources", []) if str(item).strip()]
+    message = str(payload.get("message") or "").strip()
+
+    if source_url and source_url not in sources:
+        sources.append(source_url)
+
+    if kind not in {"bullet_summary", "not_found"}:
+        kind = "not_found"
+    if kind == "bullet_summary" and not bullets:
+        kind = "not_found"
+        message = message or "Not found in document."
+    if kind == "not_found":
+        bullets = []
+        message = message or "Not found in document."
+
+    return {
+        "kind": kind,
+        "query": prompt,
+        "bullets": bullets,
+        "sources": sources,
+        "message": message,
+    }
+
+
+def get_google_doc(runtime: ToolRuntime[AgentRuntimeContext]) -> tuple[str, dict[str, Any]]:
     settings = get_settings()
     ctx = runtime.context
     state = runtime.state or {}
@@ -549,17 +685,23 @@ def get_google_doc(runtime: ToolRuntime[AgentRuntimeContext]) -> str:
     max_doc_calls = max(1, int(ctx.max_doc_calls))
     prior_tool_results = previous_tool_results(messages)
     doc_call_count = len(prior_tool_results)
-    cached = prior_tool_results[-1] if prior_tool_results else ""
+    cached_artifact = extract_last_tool_artifact(messages) if prior_tool_results else None
 
     if not doc_id:
-        return "ERROR: doc_id is empty in agent context."
+        artifact = GoogleDocToolArtifact(kind="error", error_message="doc_id is empty in agent context.")
+        return tool_artifact_to_content(artifact), artifact.model_dump()
     if not token:
-        return "ERROR: user_access_token is empty in agent context."
+        artifact = GoogleDocToolArtifact(kind="error", error_message="user_access_token is empty in agent context.")
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
     if doc_call_count >= max_doc_calls:
-        if cached:
-            return cached
-        return f"ERROR: get_google_doc call budget reached ({max_doc_calls})."
+        if cached_artifact is not None:
+            return tool_artifact_to_content(cached_artifact), cached_artifact.model_dump()
+        artifact = GoogleDocToolArtifact(
+            kind="error",
+            error_message=f"get_google_doc call budget reached ({max_doc_calls}).",
+        )
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
     if oauth_session_uri:
         try:
@@ -567,11 +709,15 @@ def get_google_doc(runtime: ToolRuntime[AgentRuntimeContext]) -> str:
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "Unknown")
             msg = exc.response.get("Error", {}).get("Message", str(exc))
-            return (
-                "ERROR: complete_resource_token_auth failed.\n"
-                f"code: {code}\n"
-                f"message: {msg}"
+            artifact = GoogleDocToolArtifact(
+                kind="error",
+                error_message=(
+                    "complete_resource_token_auth failed.\n"
+                    f"code: {code}\n"
+                    f"message: {msg}"
+                ),
             )
+            return tool_artifact_to_content(artifact), artifact.model_dump()
 
     params: dict[str, Any] = {
         "name": settings["GOOGLE_DOCS_TOOL_NAME"],
@@ -600,47 +746,74 @@ def get_google_doc(runtime: ToolRuntime[AgentRuntimeContext]) -> str:
     except requests.HTTPError as exc:
         status = getattr(exc.response, "status_code", "unknown")
         body = (getattr(exc.response, "text", "") or "")[:800]
-        return (
-            "ERROR: MCP HTTP failure while calling Google Docs tool.\n"
-            f"status: {status}\n"
-            f"body: {body}"
+        artifact = GoogleDocToolArtifact(
+            kind="error",
+            error_message=(
+                "MCP HTTP failure while calling Google Docs tool.\n"
+                f"status: {status}\n"
+                f"body: {body}"
+            ),
         )
+        return tool_artifact_to_content(artifact), artifact.model_dump()
     except requests.RequestException as exc:
-        return f"ERROR: MCP network failure while calling Google Docs tool: {exc}"
+        artifact = GoogleDocToolArtifact(
+            kind="error",
+            error_message=f"MCP network failure while calling Google Docs tool: {exc}",
+        )
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
     if "error" in payload and payload["error"].get("code") == -32042:
         auth_url = extract_elicitation_url(payload) or ""
         req_uri = extract_request_uri_from_url(auth_url) or ""
-        return (
-            "CONSENT_REQUIRED\n"
-            f"authorization_url: {auth_url}\n"
-            f"oauth_session_uri: {req_uri}"
+        artifact = GoogleDocToolArtifact(
+            kind="consent",
+            authorization_url=auth_url,
+            oauth_session_uri=req_uri,
         )
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
     if "error" in payload:
-        return f"ERROR: MCP get_google_doc failed: {payload['error']}"
+        artifact = GoogleDocToolArtifact(
+            kind="error",
+            error_message=f"MCP get_google_doc failed: {payload['error']}",
+        )
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
     raw_text = extract_mcp_text(payload)
     if bool((payload.get("result") or {}).get("isError")):
-        return (
-            "ERROR: MCP get_google_doc returned isError=true.\n"
-            f"message: {raw_text[:800]}"
+        artifact = GoogleDocToolArtifact(
+            kind="error",
+            error_message=(
+                "MCP get_google_doc returned isError=true.\n"
+                f"message: {raw_text[:800]}"
+            ),
         )
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
     doc_payload = parse_google_doc_payload(payload)
     if not doc_payload:
-        return (
-            "ERROR: Could not parse Google Docs tool response.\n"
-            f"raw: {raw_text[:800]}"
+        artifact = GoogleDocToolArtifact(
+            kind="error",
+            error_message=(
+                "Could not parse Google Docs tool response.\n"
+                f"raw: {raw_text[:800]}"
+            ),
         )
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
     doc_text = extract_google_doc_text(doc_payload)
     source_url = f"https://docs.google.com/document/d/{doc_id}/edit"
 
     if not doc_text:
-        return f"EMPTY_DOCUMENT\nSOURCE: {source_url}"
+        artifact = GoogleDocToolArtifact(kind="empty", source_url=source_url)
+        return tool_artifact_to_content(artifact), artifact.model_dump()
 
-    return f"DOCUMENT_TEXT:\n{doc_text}\n\nSOURCE: {source_url}"
+    artifact = GoogleDocToolArtifact(
+        kind="document",
+        document_text=doc_text,
+        source_url=source_url,
+    )
+    return tool_artifact_to_content(artifact), artifact.model_dump()
 
 
 def _session_from_context(context: Any) -> str:
@@ -681,16 +854,18 @@ def invoke(payload: dict, context=None):
         agent_state = run_agent(prompt_text or "Summarize the document.", recursion_limit, runtime_context)
         messages = list(agent_state.get("messages", []))
         tool_text = extract_last_tool_result(messages)
+        tool_artifact = extract_last_tool_artifact(messages)
         trace = extract_tool_trace(messages)
         tools_used, tool_call_counts = summarize_tool_usage(messages)
+        structured_response = agent_state.get("structured_response")
     except Exception as exc:
         messages = []
         tool_text = f"ERROR: LangChain agent invoke failed: {exc}"
+        tool_artifact = GoogleDocToolArtifact(kind="error", error_message=tool_text)
         trace = []
         tools_used = []
         tool_call_counts = {}
-
-    parsed = parse_tool_output(tool_text)
+        structured_response = None
 
     authorization_url = ""
     oauth_session_uri = ""
@@ -704,9 +879,9 @@ def invoke(payload: dict, context=None):
         "message": "",
     }
 
-    if parsed["kind"] == "consent":
-        oauth_session_uri = parsed.get("oauth_session_uri", "")
-        raw_auth = parsed.get("authorization_url", "")
+    if tool_artifact.kind == "consent":
+        oauth_session_uri = tool_artifact.oauth_session_uri
+        raw_auth = tool_artifact.authorization_url
         if not oauth_session_uri:
             oauth_session_uri = extract_request_uri_from_url(raw_auth) or ""
         authorization_url = build_authorization_url(oauth_session_uri) if oauth_session_uri else raw_auth
@@ -724,8 +899,8 @@ def invoke(payload: dict, context=None):
             "sources": [],
             "message": answer,
         }
-    elif parsed["kind"] == "error":
-        answer = tool_text
+    elif tool_artifact.kind == "error":
+        answer = tool_artifact.error_message or tool_text
         answer_mode = "error"
         answer_payload = {
             "kind": "error",
@@ -734,8 +909,8 @@ def invoke(payload: dict, context=None):
             "sources": [],
             "message": answer,
         }
-    elif parsed["kind"] == "empty":
-        src = parsed.get("source_url", "")
+    elif tool_artifact.kind == "empty":
+        src = tool_artifact.source_url
         answer = "The document is empty."
         if src:
             answer += f"\n\nSources:\n- {src}"
@@ -747,9 +922,9 @@ def invoke(payload: dict, context=None):
             "sources": [src] if src else [],
             "message": "The document is empty.",
         }
-    elif parsed["kind"] == "document":
-        doc_text = parsed.get("document_text", "")
-        source_url = parsed.get("source_url", "")
+    elif tool_artifact.kind == "document":
+        doc_text = tool_artifact.document_text
+        source_url = tool_artifact.source_url
         if not doc_text:
             answer = "ERROR: Document text is empty after parsing tool result."
             answer_mode = "error"
@@ -762,13 +937,20 @@ def invoke(payload: dict, context=None):
             }
         else:
             doc_for_answer = doc_text[: get_settings()["DOC_CONTEXT_MAX_CHARS"]]
-            answer_payload = build_structured_answer(
-                prompt=prompt_text,
-                doc_text=doc_for_answer,
-                source_url=source_url,
-            )
+            if structured_response:
+                answer_payload = normalize_structured_response(
+                    structured_response=structured_response,
+                    prompt=prompt_text,
+                    source_url=source_url,
+                )
+            else:
+                answer_payload = build_structured_answer(
+                    prompt=prompt_text,
+                    doc_text=doc_for_answer,
+                    source_url=source_url,
+                )
             answer = render_structured_answer(answer_payload)
-            answer_mode = "deterministic_extractive"
+            answer_mode = "langchain_structured" if structured_response else "deterministic_extractive"
     else:
         answer = "ERROR: Unexpected tool output format."
         answer_mode = "error"
