@@ -1,4 +1,5 @@
 bedrock-agentcore
+bedrock-agentcore-starter-toolkit
 langgraph
 langchain-core
 langchain-aws
@@ -6,3 +7,4 @@ langchain-google-genai
 typing-extensions
 python-dotenv
 requests
+PyYAML

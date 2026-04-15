@@ -12,6 +12,15 @@
 3. Runtime код для деплою: `runtime_app_agentcore_full.py`
 4. Домашнє завдання: `HW_ASSIGNMENT.md`
 
+## Test Document
+Для 1-в-1 повторення воркшопу використовуйте цей Google Doc:
+- [Workshop test document](https://docs.google.com/document/d/1vggeCZ61QagUCnDb4UL1DxUU0JdAQFUl_4ONtGPcHyg/edit?usp=sharing)
+
+Що зробити:
+- Відкрити документ і зробити `Make a copy`.
+- Вказати `GOOGLE_DOC_ID` у `.env` як id вашої копії.
+- Переконатися, що Google-акаунт, яким ви проходите consent, має доступ до цієї копії.
+
 ## Структура проєкту
 - `output/jupyter-notebook/workshop_google_docs_rag_e2e_demo.ipynb` — короткий demo notebook для screen-share.
 - `workshop_google_docs_rag_e2e.ipynb` — повний E2E notebook.
