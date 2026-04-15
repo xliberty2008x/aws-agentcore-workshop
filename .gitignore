@@ -29,6 +29,7 @@ local/
 # Editor settings
 .vscode/
 .codex/
+.DS_Store
 
 # Local presentation artifacts
 presentations/
@@ -38,3 +39,13 @@ archive/
 
 # Generated notebook/output artifacts
 output/
+
+# Internal validation artifacts
+tests/
+
+# Local-only workshop maintenance artifacts
+AWS_AgentCore_Workshop.pptx
+scripts/run_agentcore_e2e_smoke.py
+docs/agentcore-multitenant-runtime-schema.md
+pyproject.toml
+.python-version

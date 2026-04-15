@@ -6,11 +6,8 @@
 - understanding how Google Docs outbound OAuth fits into AgentCore Gateway.
 
 Current primary flow:
-- `output/jupyter-notebook/workshop_google_docs_rag_e2e_demo.ipynb`
 - `workshop_google_docs_rag_e2e.ipynb`
 - `runtime_app_agentcore_full.py`
-
-Legacy module 11 scripts still exist in `archive/legacy-modules/`, but they are archival and not the main presentation path.
 
 ## Target architecture
 1. Client invokes Runtime.
@@ -119,4 +116,3 @@ Before moving on, verify:
 5. You saved `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 
 Do not worry yet if redirect URIs are still empty. That is expected at this stage.
-
