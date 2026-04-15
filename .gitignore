@@ -35,3 +35,6 @@ presentations/
 
 # Archived workshop materials
 archive/
+
+# Generated notebook/output artifacts
+output/
