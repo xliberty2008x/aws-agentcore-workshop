@@ -7,9 +7,26 @@
 - Tool calling + Observability
 
 ## Швидкий старт
-1. Основний workshop notebook: `workshop_google_docs_rag_e2e.ipynb`
-2. Runtime код для деплою: `runtime_app_agentcore_full.py`
-3. Домашнє завдання: `HW_ASSIGNMENT.md`
+1. Створити локальне середовище:
+   `python3.12 -m venv .venv`
+2. Відкрити `workshop_google_docs_rag_e2e.ipynb`
+3. Вибрати як notebook kernel саме Python з `.venv`
+4. Якщо використовуєш plain Jupyter, а не VS Code, спочатку зареєструй kernel:
+   `./.venv/bin/python -m pip install ipykernel && ./.venv/bin/python -m ipykernel install --user --name aws-agentcore-workshop`
+5. Запустити `Step 0` у notebook, який поставить всі pinned requirements у вибраний kernel
+6. Пройти notebook зверху вниз
+
+Примітка про deploy surface:
+- локальний notebook kernel ставить повний набір workshop-залежностей з `requirements.txt`;
+- `Step 4` перед `direct_code_deploy` збирає ізольований deploy source dir з `runtime_app_agentcore_full.py` і runtime-only requirements файлом, щоб starter toolkit бачив лише lean runtime dependencies.
+
+Поточний public flow у notebook:
+- `Step 1` — Cognito inbound auth для JWT викликів.
+- `Step 2` — AgentCore Identity OAuth provider + Gateway + Google Docs OpenAPI target.
+- `Step 3` — локальний навчальний `create_agent` приклад на mock data; це не деплойний runtime path.
+- `Step 4` — офіційний `agentcore configure/deploy` path для ізольованого runtime source dir з `runtime_app_agentcore_full.py`.
+- `Step 5` — runtime invoke через HTTPS + bearer JWT, перший виклик може повернути Google consent.
+- `Step 6` — cleanup команд і ресурсів.
 
 ## Test Document
 Для 1-в-1 повторення воркшопу використовуйте цей Google Doc:
@@ -22,8 +39,8 @@
 
 ## Структура проєкту
 - `workshop_google_docs_rag_e2e.ipynb` — повний E2E notebook.
-- `runtime_app_agentcore_full.py` — runtime app для AgentCore deploy.
-- `workshop_helpers/` — helper-модулі для demo flow, deploy, invoke і consent orchestration.
+- `runtime_app_agentcore_full.py` — runtime app для AgentCore deploy; використовує `create_agent` і один Gateway-backed tool.
+- `workshop_helpers/` — допоміжні модулі для локального demo/smoke tooling поза основним public notebook path.
 - `HW_ASSIGNMENT.md` — домашнє завдання та чекліст для ментора.
 - `docs/` — теорія, шпаргалки та додаткові інструкції.
 

@@ -9,12 +9,15 @@ Current primary flow:
 - `workshop_google_docs_rag_e2e.ipynb`
 - `runtime_app_agentcore_full.py`
 
-## Target architecture
-1. Client invokes Runtime.
-2. Runtime executes LangGraph.
-3. Graph calls Gateway tool (`tools/call`) for Google Docs.
-4. Gateway uses OAuth credential provider for Google Docs API.
-5. Graph ranks chunks and returns evidence-based answer.
+## Current workshop flow
+1. `Step 1` in the notebook creates inbound Cognito auth for bearer JWT calls.
+2. `Step 2` creates an AgentCore OAuth provider, Gateway, and Google Docs OpenAPI target.
+3. `Step 4` deploys `runtime_app_agentcore_full.py` through the documented `agentcore configure/deploy` CLI path.
+4. The runtime uses LangChain `create_agent` with exactly one tool: `get_google_doc`.
+5. That tool calls the Gateway over MCP `tools/call`, which triggers Google OAuth when needed.
+6. `Step 5` performs the first runtime invoke, browser consent if required, and then a second invoke with the same OAuth session.
+
+This flow does not use a custom StateGraph in the deployed runtime, does not use Lambda for Google Docs, and does not do chunk-ranking or retrieval over multiple sources.
 
 ---
 
@@ -33,7 +36,7 @@ Create a Google OAuth app for a web application and get two values:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 
-Do not finalize redirect URIs yet. First create the AgentCore credential provider in Step 2, then copy the AgentCore `callbackUrl` back into Google Cloud.
+Do not finalize redirect URIs yet. First create the AgentCore credential provider in the notebook `Step 2`, then copy the AgentCore `callbackUrl` back into Google Cloud using Section `2` below.
 
 ### Step-by-step for juniors
 
@@ -56,8 +59,8 @@ Recommended:
 2. Enable it too.
 
 Why:
-- for this workshop we read Google Docs directly;
-- some Google Workspace flows are easier to troubleshoot when both Docs API and Drive API are enabled.
+- for this workshop we read Google Docs directly through the Google Docs API;
+- enabling Drive API is optional but can simplify troubleshooting in some Google Workspace environments.
 
 ### 1.2 Configure OAuth consent screen
 1. Open `APIs & Services` -> `OAuth consent screen`.
@@ -92,7 +95,7 @@ For now:
 
 Why we leave redirect URIs empty:
 - AgentCore generates the correct callback URL in Step 2;
-- you will copy that exact value into Google Cloud in Step 3.
+- you will copy that exact value into Google Cloud in Section `2` below.
 
 6. Click `Create`.
 7. Copy the generated values:
@@ -116,3 +119,24 @@ Before moving on, verify:
 5. You saved `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 
 Do not worry yet if redirect URIs are still empty. That is expected at this stage.
+
+---
+
+## 2) Add the AgentCore callback URL to Google Cloud
+
+After you run notebook `Step 2 - Outbound provider + Gateway`, the notebook prints:
+- `provider_arn`
+- `provider_name`
+- `callback_url`
+
+Take that exact `callback_url` value and add it to your Google OAuth client:
+
+1. Open `Google Auth Platform` -> `Clients`.
+2. Open the OAuth client you created in Section `1`.
+3. In `Authorized redirect URIs`, add the exact `callback_url` printed by the notebook.
+4. Save the client.
+
+Important:
+- use the exact value, character-for-character;
+- if you recreate the AgentCore OAuth provider and the callback changes, update the Google client again;
+- until this redirect URI is registered, the Google consent flow in notebook `Step 5` will fail.
