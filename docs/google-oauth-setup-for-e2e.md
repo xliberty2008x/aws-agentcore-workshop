@@ -16,6 +16,7 @@ Current primary flow:
 4. The runtime uses LangChain `create_agent` with exactly one tool: `get_google_doc`.
 5. That tool calls the Gateway over MCP `tools/call`, which triggers Google OAuth when needed.
 6. `Step 5` performs the first runtime invoke, browser consent if required, and then a second invoke with the same OAuth session.
+7. When consent completes, the browser should land on the local callback URL and show a simple `Consent complete` page before you return to the notebook.
 
 This flow does not use a custom StateGraph in the deployed runtime, does not use Lambda for Google Docs, and does not do chunk-ranking or retrieval over multiple sources.
 
@@ -140,3 +141,4 @@ Important:
 - use the exact value, character-for-character;
 - if you recreate the AgentCore OAuth provider and the callback changes, update the Google client again;
 - until this redirect URI is registered, the Google consent flow in notebook `Step 5` will fail.
+- the localhost callback is expected for this workshop, and it should now render a success page rather than a browser connection error.

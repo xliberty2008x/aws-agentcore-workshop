@@ -56,7 +56,7 @@ AgentCore Gateway є містком між агентом і зовнішнім�
 `Step 4` і `Step 5` — це реальний E2E path:
 1. Runtime deploy через `agentcore configure/deploy`
 2. invoke через HTTPS + bearer JWT
-3. Google consent при потребі
+3. Google consent при потребі через локальний callback server на `http://localhost:8081/...`
 4. другий invoke з тим самим `oauth_session_uri`
 
 ---
@@ -68,7 +68,7 @@ AgentCore Gateway є містком між агентом і зовнішнім�
 1. Агент завжди викликає `get_google_doc`.
 2. Tool або повертає документ, або сигналізує consent/error/empty state.
 3. Якщо документ доступний, агент повертає structured answer з bullets і `sources`.
-4. Notebook далі показує `response`, `answer`, `tool_trace` та consent fields.
+4. Notebook далі показує `response`, `answer`, `tool_trace` та consent fields, а під час consent браузер має перейти на локальну success page замість connection error.
 
 У public runtime зараз немає fallback web-search tool, multi-tool routing чи custom chunk-ranking.
 
