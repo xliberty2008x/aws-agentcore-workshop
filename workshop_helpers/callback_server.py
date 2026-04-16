@@ -132,8 +132,12 @@ def start_local_callback_server(
         _CALLBACK_SERVER_REGISTRY.pop(endpoint, None)
 
     if current_server is not None and current_thread is not None and current_thread.is_alive():
-        reset_callback_server_state(current_server)
-        return current_server, current_thread, callback_server_info(oauth_return_url, host, port, path)
+        current_host, current_port = current_server.server_address[:2]
+        current_path = getattr(current_server, "callback_path", path)
+        if (current_host, current_port, current_path) == endpoint:
+            reset_callback_server_state(current_server)
+            return current_server, current_thread, callback_server_info(oauth_return_url, host, port, path)
+        stop_local_callback_server(oauth_return_url, current_server, current_thread)
 
     class CallbackServer(ThreadingHTTPServer):
         allow_reuse_address = True
@@ -150,6 +154,7 @@ def start_local_callback_server(
 
     server.callback_event = threading.Event()
     server.last_request = None
+    server.callback_path = path
     thread = threading.Thread(
         target=server.serve_forever,
         name="agentcore-demo-callback-server",
