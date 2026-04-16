@@ -25,7 +25,7 @@
 - `Step 2` — AgentCore Identity OAuth provider + Gateway + Google Docs OpenAPI target.
 - `Step 3` — локальний навчальний `create_agent` приклад на mock data; це не деплойний runtime path.
 - `Step 4` — офіційний `agentcore configure/deploy` path для ізольованого runtime source dir з `runtime_app_agentcore_full.py`.
-- `Step 5` — runtime invoke через HTTPS + bearer JWT, перший виклик може повернути Google consent.
+- `Step 5` — runtime invoke через HTTPS + bearer JWT, перший виклик може повернути Google consent; notebook піднімає локальний callback server і після consent браузер має показати success page на `http://localhost:8081/...`.
 - `Step 6` — cleanup команд і ресурсів.
 
 ## Test Document

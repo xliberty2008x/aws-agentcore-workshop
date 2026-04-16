@@ -4,15 +4,20 @@ import json
 import logging
 import os
 import re
-import threading
-import urllib.parse
 import webbrowser
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 import boto3
 
+from .callback_server import (
+    callback_endpoint,
+    callback_server_info,
+    reset_callback_server_state,
+    start_local_callback_server,
+    stop_local_callback_server,
+    wait_for_local_callback,
+)
 
 LOG = logging.getLogger(__name__)
 
@@ -25,82 +30,6 @@ DEFAULT_RUNTIME_PROMPT_1 = (
 DEFAULT_RUNTIME_PROMPT_2 = (
     "Answer in 6 bullets: summarize incident response from the document and cite source link from the document."
 )
-CALLBACK_SUCCESS_HTML = """<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Consent Complete</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      background: #f5f1e8;
-      color: #1f2328;
-      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    main {
-      max-width: 36rem;
-      padding: 2rem 2.25rem;
-      border: 1px solid #d0c7b8;
-      border-radius: 1rem;
-      background: #fffdf8;
-      box-shadow: 0 18px 40px rgba(31, 35, 40, 0.08);
-    }
-    h1 {
-      margin: 0 0 0.75rem;
-      font-size: 1.85rem;
-      line-height: 1.1;
-    }
-    p {
-      margin: 0.5rem 0;
-      line-height: 1.5;
-    }
-    code {
-      font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, monospace;
-      background: #f0eadc;
-      padding: 0.15rem 0.35rem;
-      border-radius: 0.35rem;
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <h1>Consent complete</h1>
-    <p>The OAuth redirect reached the local callback server successfully.</p>
-    <p>You can return to the notebook and run the next invoke step.</p>
-  </main>
-</body>
-</html>
-"""
-
-_CALLBACK_SERVER_REGISTRY: dict[
-    tuple[str, int, str],
-    tuple[ThreadingHTTPServer, threading.Thread],
-] = {}
-
-
-class _CallbackHandler(BaseHTTPRequestHandler):
-    server_version = "WorkshopCallback/1.0"
-
-    def do_GET(self) -> None:
-        self.server.last_request = {
-            "path": self.path,
-            "query": urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query),
-        }
-        self.server.callback_event.set()
-        body = CALLBACK_SUCCESS_HTML.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, format: str, *args: Any) -> None:
-        return
-
 
 def find_project_root(start: Path | None = None) -> Path:
     current = (start or Path.cwd()).resolve()
@@ -176,8 +105,8 @@ class WorkshopE2EDemoBase:
             "aws_region": self.aws_region,
             "account_id": self.account_id,
         }
-        self._callback_server: ThreadingHTTPServer | None = None
-        self._callback_thread: threading.Thread | None = None
+        self._callback_server = None
+        self._callback_thread = None
 
     def _normalize_aws_env(self) -> None:
         os.environ["AWS_PROFILE"] = self.aws_profile
@@ -192,19 +121,7 @@ class WorkshopE2EDemoBase:
             raise ValueError(f"Missing required environment variables: {missing}")
 
     def _callback_endpoint(self) -> tuple[str, int, str]:
-        parsed = urllib.parse.urlparse(self.oauth_return_url)
-        if parsed.scheme != "http":
-            raise ValueError(
-                "OAUTH_RETURN_URL must use http:// for the local callback server."
-            )
-        host = parsed.hostname or "localhost"
-        if host not in {"localhost", "127.0.0.1"}:
-            raise ValueError(
-                "OAUTH_RETURN_URL must point to localhost or 127.0.0.1 for demo callback handling."
-            )
-        port = parsed.port or 80
-        path = parsed.path or "/"
-        return host, port, path
+        return callback_endpoint(self.oauth_return_url)
 
     def _callback_server_info(
         self,
@@ -214,95 +131,41 @@ class WorkshopE2EDemoBase:
         *,
         status: str = "running",
     ) -> dict[str, Any]:
-        return {
-            "url": self.oauth_return_url,
-            "host": host,
-            "port": port,
-            "path": path,
-            "status": status,
-        }
+        return callback_server_info(self.oauth_return_url, host, port, path, status=status)
 
-    def _reset_callback_server_state(self, server: ThreadingHTTPServer) -> None:
-        server.callback_event.clear()
-        server.last_request = None
+    def _reset_callback_server_state(self, server: Any) -> None:
+        reset_callback_server_state(server)
 
     def start_callback_server(self) -> dict[str, Any]:
         host, port, path = self._callback_endpoint()
-        endpoint = (host, port, path)
-
-        existing = _CALLBACK_SERVER_REGISTRY.get(endpoint)
-        if existing:
-            server, thread = existing
-            if thread.is_alive():
-                self._reset_callback_server_state(server)
-                self._callback_server = server
-                self._callback_thread = thread
-                self.state["callback_server"] = self._callback_server_info(
-                    host, port, path
-                )
-                return dict(self.state["callback_server"])
-            _CALLBACK_SERVER_REGISTRY.pop(endpoint, None)
-
-        if self._callback_server is not None:
-            self._reset_callback_server_state(self._callback_server)
-            self.state["callback_server"] = self._callback_server_info(host, port, path)
-            return dict(self.state["callback_server"])
-
-        class CallbackServer(ThreadingHTTPServer):
-            allow_reuse_address = True
-
-        try:
-            server = CallbackServer((host, port), _CallbackHandler)
-        except OSError as exc:
-            if exc.errno == 48:
-                raise RuntimeError(
-                    f"Callback port {host}:{port} is already in use. "
-                    "If this is a stale notebook callback server, rerun the cell after "
-                    "calling `demo.stop_callback_server()` on the old demo instance or "
-                    "restart the kernel."
-                ) from exc
-            raise
-        server.callback_event = threading.Event()
-        server.last_request = None
-        thread = threading.Thread(
-            target=server.serve_forever,
-            name="agentcore-demo-callback-server",
-            daemon=True,
+        server, thread, info = start_local_callback_server(
+            self.oauth_return_url,
+            current_server=self._callback_server,
+            current_thread=self._callback_thread,
         )
-        thread.start()
-
         self._callback_server = server
         self._callback_thread = thread
-        _CALLBACK_SERVER_REGISTRY[endpoint] = (server, thread)
-        self.state["callback_server"] = self._callback_server_info(host, port, path)
+        self.state["callback_server"] = info
         return dict(self.state["callback_server"])
 
     def stop_callback_server(self) -> None:
-        if self._callback_server is None:
-            return
-        host, port, path = self._callback_endpoint()
-        endpoint = (host, port, path)
-        self._callback_server.shutdown()
-        self._callback_server.server_close()
-        if self._callback_thread is not None:
-            self._callback_thread.join(timeout=2)
-        _CALLBACK_SERVER_REGISTRY.pop(endpoint, None)
+        self.state["callback_server"] = stop_local_callback_server(
+            self.oauth_return_url,
+            self._callback_server,
+            self._callback_thread,
+        )
         self._callback_server = None
         self._callback_thread = None
-        self.state["callback_server"] = {
-            "url": self.oauth_return_url,
-            "status": "stopped",
-        }
 
     def wait_for_callback(self, timeout_sec: int = 180) -> dict[str, Any]:
         if self._callback_server is None:
             self.start_callback_server()
         assert self._callback_server is not None
-        if not self._callback_server.callback_event.wait(timeout=timeout_sec):
-            raise TimeoutError(
-                f"Timed out waiting for OAuth callback on {self.oauth_return_url}."
-            )
-        return dict(self._callback_server.last_request or {})
+        return wait_for_local_callback(
+            self.oauth_return_url,
+            self._callback_server,
+            timeout_sec=timeout_sec,
+        )
 
     def open_consent_in_browser(self, authorization_url: str) -> None:
         if not authorization_url:
