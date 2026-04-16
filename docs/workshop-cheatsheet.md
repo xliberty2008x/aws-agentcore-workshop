@@ -1,9 +1,9 @@
-# AgentCore + LangGraph Workshop Cheat Sheet
+# AgentCore Workshop Cheat Sheet
 
-## 1) Архітектурна Модель: LangGraph vs AgentCore
+## 1) Поточна Модель: LangChain `create_agent` vs AgentCore
 
-### LangGraph
-LangGraph відповідає за оркестрацію агентної логіки: стан, вузли, ребра, інструментальний цикл, checkpoint-памʼять на рівні потоку (`thread_id`) і керування виконанням крок за кроком.
+### LangChain agent layer
+У цьому воркшопі агентний цикл побудований не на ручному `StateGraph`, а на високорівневому `create_agent`. Це відповідає поточному public runtime path у [runtime_app_agentcore_full.py](../runtime_app_agentcore_full.py): один tool, один системний prompt, structured response і мінімум custom orchestration.
 
 ### AgentCore Runtime
 AgentCore Runtime відповідає за хостинг агента в AWS: endpoint, lifecycle деплою, інвокацію, інтеграцію з авторизацією, логуванням і керованою інфраструктурою виконання.
@@ -30,39 +30,47 @@ AgentCore Gateway є містком між агентом і зовнішнім�
 
 ---
 
-## 3) Framework-Only Підхід (без самописного agent loop)
+## 3) Framework-First Підхід у поточному repo
 
-Рекомендований стек для workshop:
+Поточний public stack:
 
-1. Модель: `ChatBedrockConverse` (`langchain-aws`)
+1. Модель: `ChatGoogleGenerativeAI`
 2. Агентний цикл: `create_agent` (`langchain.agents`)
-3. Інструменти: `@tool` (`langchain_core.tools`)
-4. Памʼять потоку: `InMemorySaver` + `thread_id`
+3. Інструмент: один `@tool` — `get_google_doc`
+4. Tool transport: AgentCore Gateway `tools/call`
+5. Structured output: `ToolStrategy(...)` для фінальної відповіді
+6. Runtime shell: `BedrockAgentCoreApp`
 
-Цей підхід мінімізує custom-код і тримає рішення в межах офіційних концепцій LangGraph/Bedrock.
+Це означає:
+- локальний `Step 3` у notebook показує навчальний `create_agent` path на mock data;
+- деплойний runtime теж іде через `create_agent`, але з реальним Gateway-backed tool і OAuth session handling.
 
 ---
 
 ## 4) Локальний vs Деплойний Контур
 
 ### Локальний контур (для навчання)
-Локальний agent path на `create_agent` працює з mock-tools і реальним LLM, щоб сфокусуватись на механіці оркестрації та thread memory без OAuth/MCP складності.
+`Step 3` у notebook працює з mock-tool і `create_agent`, щоб окремо показати agent loop без AWS/Gateway/OAuth складності. Це stateless demo path: він не демонструє thread persistence або checkpoint memory.
 
 ### Деплойний контур (production-like)
-Деплойна версія працює з реальним Gateway, OAuth-флоу та інструментами з MCP pool. Це повний E2E сценарій з авторизацією і зовнішніми інтеграціями.
+`Step 4` і `Step 5` — це реальний E2E path:
+1. Runtime deploy через `agentcore configure/deploy`
+2. invoke через HTTPS + bearer JWT
+3. Google consent при потребі
+4. другий invoke з тим самим `oauth_session_uri`
 
 ---
 
 ## 5) Agent Tool-Loop Патерн у Workshop
 
-Базова стратегія:
+Поточний runtime патерн простий:
 
-1. Спершу отримати контекст з основного джерела (Google Doc tool).
-2. Якщо контекст недостатній, викликати fallback web search tool.
-3. Синтезувати відповідь на основі фактичних tool outputs.
-4. Додавати джерела (`Sources`) у фінальну відповідь.
+1. Агент завжди викликає `get_google_doc`.
+2. Tool або повертає документ, або сигналізує consent/error/empty state.
+3. Якщо документ доступний, агент повертає structured answer з bullets і `sources`.
+4. Notebook далі показує `response`, `answer`, `tool_trace` та consent fields.
 
-Це дає керовану і пояснювану поведінку агента без “чорної скриньки”.
+У public runtime зараз немає fallback web-search tool, multi-tool routing чи custom chunk-ranking.
 
 ---
 
@@ -104,7 +112,7 @@ Inbound auth закриває ці ризики через валідацію і
 Авторизація конфігурується на рівні Runtime/Gateway, а не розмазується по коду нод і тулз.
 
 2. Чисте розділення відповідальностей
-LangGraph відповідає за агентну логіку, AgentCore — за доступ, безпеку, endpoint lifecycle.
+LangChain agent layer відповідає за агентну логіку, AgentCore — за доступ, безпеку, endpoint lifecycle.
 
 3. Офіційна інтеграція з Cognito/OIDC
 Можна швидко побудувати production-потік із валідацією JWT, allowed clients, scopes.
@@ -122,7 +130,7 @@ Inbound Authentication — це не “додаткова фіча”, а ба�
 3. AgentCore перевіряє JWT через `discoveryUrl` (OIDC metadata + JWKS).
 4. Додатково перевіряється, чи `client_id` входить до `allowedClients` конфігурації authorizer.
 5. Лише після успішної валідації токена запит допускається до виконання агентної логіки та tool calls.
-6. Якщо токен невалідний/неприпустимий — запит блокується до входу в LangGraph flow.
+6. Якщо токен невалідний/неприпустимий — запит блокується до входу в runtime agent flow.
 
 ### Схема потоку (наш приклад)
 
@@ -134,7 +142,7 @@ flowchart LR
     R --> V["JWT Validation via discoveryUrl and JWKS"]
     V --> A{"client_id in allowedClients?"}
     A -- "No" --> D["Access Denied"]
-    A -- "Yes" --> G["LangGraph Agent Execution"]
+    A -- "Yes" --> G["Runtime Agent Execution"]
     G --> M["MCP Tool Calls / Runtime Response"]
 ```
 
@@ -182,7 +190,7 @@ STEP 3 формує identity baseline для всіх наступних кро�
 5. Перевіряється криптографічний підпис JWT (`RS256`) по ключу з відповідним `kid`.
 6. Перевіряються claims: як мінімум `iss` (має збігатись з metadata `issuer`), `exp`/час життя, а також client/audience обмеження згідно конфігурації.
 7. Додатково перевіряється allowlist клієнтів (`allowedClients`) для `client_id`.
-8. Якщо будь-яка перевірка падає, AgentCore повертає `401/403` і не запускає LangGraph logic.
+8. Якщо будь-яка перевірка падає, AgentCore повертає `401/403` і не запускає runtime logic.
 9. Якщо перевірка проходить, запит передається у runtime entrypoint і далі в агентний workflow.
 
 ### Як робити per-user authorization (коли одного client_id недостатньо)
@@ -226,7 +234,7 @@ STEP 3 формує identity baseline для всіх наступних кро�
 Надає мінімально потрібні права:
 - виклики сервісів AgentCore,
 - читання секретів (OAuth/client secrets),
-- виклик Lambda target-ів,
+- виклик target-інтеграцій, які реально використовуються у вашому Gateway,
 - запис логів у CloudWatch.
 
 4. Перевірка існування Gateway (`list_gateways_all`)
@@ -254,12 +262,12 @@ STEP 3 формує identity baseline для всіх наступних кро�
 ### Що це дає в архітектурі
 Цей етап відділяє транспорт/безпеку від логіки агента:
 - Gateway відповідає за auth + доступ до тулз,
-- LangGraph відповідає за decision loop і оркестрацію.
+- агентний layer (`create_agent`) відповідає за decision loop і structured answer.
 Такий поділ зменшує складність коду агента і спрощує production-експлуатацію.
 
 ---
 
-## 9) STEP 5: Outbound OAuth Provider + OpenAPI Target (без Lambda)
+## 9) STEP 2: Outbound OAuth Provider + OpenAPI Target (без Lambda)
 
 ### Головна ідея
 У цьому E2E воркшопі Gateway не потребує Lambda для Google Docs кейсу. Ми підключаємо Google API напряму як OpenAPI target.
@@ -305,7 +313,7 @@ Short ids cause `400 Bad Request` validation errors.
 
 Practical rule:
 Use deterministic long ids, for example:
-`m11-runtime-react-demo-000000000000001`
+`m11-runtime-agent-demo-000000000000001`
 
 ### Rule 3: Avoid relying on `agentcore invoke` error parsing for workshop demos
 Current CLI may throw an internal traceback after HTTP errors, obscuring root cause.
@@ -313,14 +321,7 @@ Current CLI may throw an internal traceback after HTTP errors, obscuring root ca
 Practical rule:
 For workshop reliability, call runtime endpoint directly with `requests` + bearer JWT and inspect status/body explicitly.
 
-### Rule 4: Separate build from smoke-tests
-External LLM/tool calls can be slow.
-
-Practical rule:
-1. Build local `create_agent`-based agent in one cell.
-2. Put live smoke-test in an optional cell controlled by env flag (`RUN_LOCAL_SMOKE_TEST`).
-
-### Rule 5: Add a health gate before deploy
+### Rule 4: Add a health gate before deploy
 Before runtime deploy, assert:
 1. Gateway selected is `2025-11-25` compatible.
 2. Google Docs tool name is present.

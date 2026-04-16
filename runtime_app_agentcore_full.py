@@ -18,7 +18,17 @@ from langchain.tools import ToolRuntime
 from pydantic import BaseModel, Field
 
 app = BedrockAgentCoreApp()
-APP_VERSION = "2026-04-15-langchain-create-agent-v9"
+APP_VERSION = "2026-04-15-runtime-minimal-deps-v10"
+RUNTIME_DEPLOY_REQUIREMENTS = (
+    "bedrock-agentcore==1.6.2",
+    "langchain==1.2.15",
+    "langchain-core==1.2.29",
+    "langchain-google-genai==4.2.1",
+    "pydantic==2.13.1",
+    "requests==2.33.1",
+    "boto3==1.42.89",
+    "botocore==1.42.89",
+)
 WORKSHOP_TOOL_NAME = "get_google_doc"
 
 _SETTINGS: dict[str, Any] | None = None
